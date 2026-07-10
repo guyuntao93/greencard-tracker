@@ -187,6 +187,34 @@
   .notes ul { padding-left: 18px; margin: 8px 0; }
   .notes li { margin: 4px 0; }
   footer.foot { margin-top: 26px; font-size: 12px; color: var(--text-muted); text-align: center; }
+
+  /* ---- mobile polish ---- */
+  @media (max-width: 560px) {
+    .wrap { padding: 18px 13px 44px; }
+    header.top { gap: 10px; }
+    .title-block h1 { font-size: 20px; }
+    .title-block p.sub { font-size: 12.5px; }
+    .controls { gap: 6px; }
+    .btn { padding: 6px 10px; font-size: 12px; }
+    .tabbar { margin: 14px 0 0; gap: 6px; }
+    .tab { padding: 8px 16px; flex: 1; align-items: center; }
+    .card { padding: 15px 13px 6px; border-radius: 12px; margin-bottom: 16px; }
+    .pd-head { gap: 8px; }
+    .pd-input-wrap input { font-size: 15px; }   /* >=16px-ish stops iOS zoom-on-focus */
+    .pd-grid { gap: 10px; margin: 12px 0 4px; }
+    .pd-item { padding: 13px 14px; }
+    .pd-item .wait b { font-size: 23px; }
+    .pd-item .gap b { font-size: 19px; }
+    .tiles { gap: 9px; margin: 16px 0 18px; }
+    .tile { padding: 11px 12px; }
+    .tile .v { font-size: 18px; }
+    .tile .k { font-size: 11px; }
+    .legend { gap: 12px; }
+    th, td { padding: 8px 9px; font-size: 12.5px; }
+    thead th { white-space: normal; }           /* let long headers wrap so columns fit */
+    .card h2 { font-size: 15px; }
+    .card .hint { font-size: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -521,6 +549,7 @@ function renderChart(){
   const m = { top: 16, right: 16, bottom: 40, left: W<560?52:64 };
   const iw = W - m.left - m.right;
   const ih = H - m.top - m.bottom;
+  const narrow = W < 560;
 
   // y domain: priority dates
   const allPD = DATA.flatMap(d=>[d.a,d.b]).filter(Boolean);
@@ -542,12 +571,12 @@ function renderChart(){
 
   // y gridlines at Jan/Jul boundaries within range
   const yTicks = [];
+  const yStep = narrow ? 6 : 3;   // fewer y labels on phones
   let startY = new Date(Date.UTC(new Date(yMin).getUTCFullYear(), 0, 1));
   for (let ty = startY.getTime(); ty <= yMax + DAY*200; ){
     const dt = new Date(ty);
-    // step by 3 months
     yTicks.push(new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1)));
-    ty = Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth()+3, 1);
+    ty = Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth()+yStep, 1);
   }
   yTicks.forEach(tk=>{
     const tt = tk.getTime();
@@ -567,9 +596,10 @@ function renderChart(){
   });
 
   // x axis labels: every few months + FY starts (October)
+  const xStep = narrow ? 6 : 3;   // fewer x labels on phones to avoid overlap
   DATA.forEach((d,i)=>{
     const isOct = d.bul.getUTCMonth()===9;
-    const showLabel = isOct || i===0 || i===n-1 || i%3===0;
+    const showLabel = narrow ? (i % xStep === 0) : (isOct || i===0 || i===n-1 || i % xStep === 0);
     if (isOct){
       const xl = document.createElementNS(NS,"line");
       xl.setAttribute("class","gridline");
@@ -624,18 +654,20 @@ function renderChart(){
     });
   });
 
-  // direct end labels
-  const last = DATA[n-1];
-  [["a",last.a,"var(--series-a)"],["b",last.b,"var(--series-b)"]].forEach(([cls,v,col])=>{
-    if(!v) return;
-    const lab = document.createElementNS(NS,"text");
-    lab.setAttribute("x", xOf(n-1)); lab.setAttribute("y", yOf(v.getTime()) + (cls==="a"?-9:16));
-    lab.setAttribute("text-anchor","end");
-    lab.setAttribute("font-size","11.5"); lab.setAttribute("font-weight","600");
-    lab.setAttribute("fill", col);
-    lab.textContent = fmtPD(v, lang);
-    svg.appendChild(lab);
-  });
+  // direct end labels (skipped on phones — they collide; tiles + tooltip cover them)
+  if (!narrow){
+    const last = DATA[n-1];
+    [["a",last.a,"var(--series-a)"],["b",last.b,"var(--series-b)"]].forEach(([cls,v,col])=>{
+      if(!v) return;
+      const lab = document.createElementNS(NS,"text");
+      lab.setAttribute("x", xOf(n-1)); lab.setAttribute("y", yOf(v.getTime()) + (cls==="a"?-9:16));
+      lab.setAttribute("text-anchor","end");
+      lab.setAttribute("font-size","11.5"); lab.setAttribute("font-weight","600");
+      lab.setAttribute("fill", col);
+      lab.textContent = fmtPD(v, lang);
+      svg.appendChild(lab);
+    });
+  }
 
   // PD reference line
   if (pdT >= yMin && pdT <= yMax){
