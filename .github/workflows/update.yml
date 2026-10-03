@@ -26,15 +26,33 @@ jobs:
       - name: Fetch latest bulletin and update data
         run: |
           cat > update_data.py <<'PYEOF'
-          import re, sys, requests
+          import re, sys, time, requests
           from bs4 import BeautifulSoup, NavigableString
           HTML="index.html"
           SLUG=["january","february","march","april","may","june","july","august","september","october","november","december"]
           VAL=re.compile(r"^(C|U|\d{2}[A-Z]{3}\d{2})$")
-          HDR={"User-Agent":"Mozilla/5.0 (GreenCardTracker)"}
+          UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+          HDR={"User-Agent":UA,"Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Accept-Language":"en-US,en;q=0.9"}
           def url(y,m):
               fy=y+1 if m>=10 else y
               return f"https://travel.state.gov/content/travel/en/legal/visa-law0/visa-bulletin/{fy}/visa-bulletin-for-{SLUG[m-1]}-{y}.html"
+          def fetch_html(target):
+              for attempt in range(2):
+                  try:
+                      r=requests.get("https://r.jina.ai/"+target, headers={"User-Agent":UA,"x-return-format":"html"}, timeout=120)
+                      if r.status_code==200 and "FINAL ACTION" in r.text.upper():
+                          return r.text
+                      print("jina attempt",attempt,"status",r.status_code,"tables",("FINAL ACTION" in r.text.upper()))
+                  except Exception as e:
+                      print("jina err",e)
+                  time.sleep(5)
+              try:
+                  r=requests.get(target, headers=HDR, timeout=30)
+                  if r.status_code==200 and "FINAL ACTION" in r.text.upper(): return r.text
+                  print("direct status",r.status_code)
+              except Exception as e:
+                  print("direct err",e)
+              return None
           def cell(table,label):
               rows=table.find_all("tr")
               if not rows: return None
@@ -73,15 +91,14 @@ jobs:
               if not ent: sys.exit("no entries")
               ent.sort(); have={(y,m) for y,m,*_ in ent}
               y,m=nxt(ent[-1][0],ent[-1][1]); added=[]
-              for _ in range(3):
+              for _ in range(4):
                   if (y,m) in have: y,m=nxt(y,m); continue
-                  try: r=requests.get(url(y,m),headers=HDR,timeout=30)
-                  except Exception as e: print("skip",y,m,e); break
-                  if r.status_code==404: print("stop: not published yet",y,m); break
-                  if r.status_code!=200: print("stop: HTTP",r.status_code); break
-                  a,b,c,d=parse(r.text)
+                  html=fetch_html(url(y,m))
+                  if not html:
+                      print("stop: not available (unpublished or blocked)",y,m); break
+                  a,b,c,d=parse(html)
                   if a and b and c and d: added.append((y,m,a,b,c,d)); print("add",y,m,a,b,c,d)
-                  else: print("warn: page found but not fully parsed",y,m,(a,b,c,d)); break
+                  else: print("warn: fetched but not fully parsed",y,m,(a,b,c,d)); break
                   y,m=nxt(y,m)
               if not added: print("No new bulletins. index.html unchanged."); return
               alln=sorted(ent+added)
